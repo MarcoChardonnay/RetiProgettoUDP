@@ -3,22 +3,37 @@
 import socket as sk
 from datetime import datetime
 import os
-import traceback
+import time
 
 SERVER_HOST = "localhost"
 SERVER_PORT = 10000
 UPLOAD_CHUNK = 4096
 FILES_PATH = "./files/" # Cartella in cui si trovano i file in condivisione
 
+def cls(): # Svuota il terminale
+    os.system("cls" if os.name == "nt" else "clear")
+
 def log(message, address=False):
-    #print("["+datetime.now().strftime("%m/%d/%Y %H:%M:%S")+"] "+("["+address[0]+":"+str(address[1])+"] " if address else "")+message)
-    print("\033[95m["+datetime.now().strftime("%m/%d/%Y %H:%M:%S")+"] "+("\033[93m["+address[0]+":"+str(address[1])+"] " if address else "")+"\033[96m\033[1m"+message+"\x1b[0m")
+    print("\x1b[0;36m["+datetime.now().strftime("%d/%m/%Y %H:%M:%S")+"]"+(" ["+address[0]+":"+str(address[1])+"]" if address else "")+"\x1b[0m "+message)
 
 def sendMessage(sock, address, message, encode=True):
-    sock.sendto(message.encode() if encode else message, address)
+    try:
+        sock.sendto(message.encode() if encode else message, address)
+    except Exception:
+        log("Client non raggiungibile", address)
 
 # Creiamo il socket UDP e lo associamo alla variabile sock
 sock = sk.socket(sk.AF_INET, sk.SOCK_DGRAM)
+
+cls()
+print("\x1b[30;43m", end="")
+print("                                  ")
+print("   Cardone,   Marco, 0000975894   ")
+print("   Desiderio, Marco, 0000839614   ")
+print("                                  ")
+print("           CLOUD SERVER           ")
+print("                                  ")
+print("\x1b[0m")
 
 log("Avvio del server in corso")
 try:
@@ -26,7 +41,7 @@ try:
     sock.bind((SERVER_HOST, SERVER_PORT))
     log("Server in ascolto su "+SERVER_HOST+":"+str(SERVER_PORT))
 
-    uploading_file = False
+    uploading_file = {}
     # Ciclo che attenderà i messaggi in entrata dal client
     while True:
         # Comandi disponibili:
@@ -38,14 +53,19 @@ try:
 
         data, address = sock.recvfrom(4096)
 
-        if uploading_file:
+        if address[1] in uploading_file:
             # data è binario, perciò il confronto viene fatto su b"put end"
             if data == b"put end":
-                uploading_file.close()
-                uploading_file = False
+                uploading_file[address[1]].close()
+                del uploading_file[address[1]]
                 log("Upload del file completato", address)
             else:
-                uploading_file.write(data)
+                uploading_file[address[1]].write(data)
+                # Invio un messaggio per informare il client che il server è pronto ad una prossima ricezione
+                # COMANDI DI LOG PER TEST, VISIBILI NELLA RELAZIONE:
+                #   log("Ricevuti "+str(len(data))+"b da "+str(address[1]))
+                #   time.sleep(1)
+                sendMessage(sock, address, "put ok")
         else:
             data = data.decode().split(" ")
             match data[0]:
@@ -62,7 +82,7 @@ try:
                         # Uniamo in filename tutti i pezzi di data dal secondo in poi
                         filename = " ".join(data[2:])
                         log("Inizio upload del file \""+filename+"\"", address)
-                        uploading_file = open(FILES_PATH+filename, "wb")
+                        uploading_file[address[1]] = open(FILES_PATH+filename, "wb")
                 case "get":
                     filename = " ".join(data[1:])
                     log("Richiesto download del file \""+filename+"\"", address)
@@ -84,6 +104,6 @@ try:
                         log("Il file selezionato non esiste", address)
                         sendMessage(sock, address, "Il file \""+filename+"\" non esiste")
 except Exception as ex:
-    log("Si è verificato un problema\n\t(DETTAGLIO: "+("".join(traceback.TracebackException.from_exception(ex).format()))+")")
+    log("Si è verificato un problema\n > \x1b[31m"+str(ex)+"\x1b[0m")
 finally:
     sock.close()
